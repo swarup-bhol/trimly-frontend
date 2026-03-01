@@ -1,21 +1,48 @@
 import { inject } from '@angular/core';
-import { Router, CanActivateFn } from '@angular/router';
+import { CanActivateFn, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
-export const authGuard: CanActivateFn = (route) => {
+export const customerGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
-
-  if (!auth.isLoggedIn()) {
-    router.navigate(['/']);
-    return false;
-  }
-
-  const expectedRole = route.data?.['role'] as string | undefined;
-  if (expectedRole && auth.getRole() !== expectedRole) {
-    router.navigate(['/']);
-    return false;
-  }
-
-  return true;
+  const session = auth.session();
+  console.log('[customerGuard] session:', session);
+  console.log('[customerGuard] isCustomer:', auth.isCustomer());
+  console.log('[customerGuard] role:', session?.user?.role);
+  if (auth.isCustomer()) return true;
+  if (auth.isBarber())  { router.navigate(['/barber']);  return false; }
+  if (auth.isAdmin())   { router.navigate(['/admin']);   return false; }
+  router.navigate(['/']);
+  return false;
 };
+
+export const barberGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  const session = auth.session();
+  console.log('[barberGuard] session:', session);
+  console.log('[barberGuard] isBarber:', auth.isBarber());
+  console.log('[barberGuard] role:', session?.user?.role);
+  if (auth.isBarber()) return true;
+  if (auth.isCustomer()) { router.navigate(['/customer']); return false; }
+  if (auth.isAdmin())    { router.navigate(['/admin']);    return false; }
+  router.navigate(['/']);
+  return false;
+};
+
+export const adminGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  const session = auth.session();
+  console.log('[adminGuard] session:', session);
+  console.log('[adminGuard] isAdmin:', auth.isAdmin());
+  console.log('[adminGuard] role:', session?.user?.role);
+  if (auth.isAdmin()) return true;
+  if (auth.isCustomer()) { router.navigate(['/customer']); return false; }
+  if (auth.isBarber())   { router.navigate(['/barber']);   return false; }
+  router.navigate(['/']);
+  return false;
+};
+
+// kept for any existing imports
+export const authGuard: CanActivateFn = customerGuard;

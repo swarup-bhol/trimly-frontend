@@ -1,25 +1,28 @@
 import { Injectable, signal } from '@angular/core';
 
 export interface Toast {
-  id: number;
+  id: string;
   title: string;
   msg: string;
-  type: 'ok' | 'warn' | 'err';
+  type: 'ok' | 'err' | 'warn' | 'wa';
 }
 
 @Injectable({ providedIn: 'root' })
 export class ToastService {
-  private _toasts = signal<Toast[]>([]);
-  readonly toasts = this._toasts.asReadonly();
-  private counter = 0;
+  readonly toasts = signal<Toast[]>([]);
 
-  show(title: string, msg: string, type: 'ok' | 'warn' | 'err' = 'ok'): void {
-    const id = ++this.counter;
-    this._toasts.update(t => [...t, { id, title, msg, type }]);
-    setTimeout(() => this._toasts.update(t => t.filter(x => x.id !== id)), 4500);
+  show(title: string, msg: string, type: Toast['type'] = 'ok', duration = 4000): void {
+    const id = Math.random().toString(36).slice(2);
+    this.toasts.update(t => [...t, { id, title, msg, type }]);
+    setTimeout(() => this.dismiss(id), duration);
   }
 
-  remove(id: number): void {
-    this._toasts.update(t => t.filter(x => x.id !== id));
+  ok(title: string, msg = '')   { this.show(title, msg, 'ok'); }
+  err(title: string, msg = '')  { this.show(title, msg, 'err'); }
+  warn(title: string, msg = '') { this.show(title, msg, 'warn'); }
+  wa(title: string, msg = '')   { this.show(title, msg, 'wa'); }
+
+  dismiss(id: string): void {
+    this.toasts.update(t => t.filter(x => x.id !== id));
   }
 }

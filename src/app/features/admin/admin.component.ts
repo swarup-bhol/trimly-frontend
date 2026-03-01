@@ -1,271 +1,341 @@
-import { Component, signal, inject, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
-import { ApiService } from '../../core/services/api.service';
+import { ShopService } from '../../core/services/shop.service';
+import { BookingService } from '../../core/services/booking.service';
 import { ToastService } from '../../core/services/toast.service';
-import { AdminStats, Shop, Booking } from '../../core/models/models';
-import { NotificationService } from '../../core/services/notification.service';
+import { TopbarComponent } from '../../shared/components/topbar/topbar.component';
+import { BadgeComponent } from '../../shared/components/badge/badge.component';
+import { ShopResponse, BookingResponse, DashboardStats } from '../../core/models/models';
 
-type AdminTab = 'overview' | 'shops' | 'bookings' | 'revenue';
+type Tab = 'overview' | 'shops' | 'bookings' | 'revenue';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, TopbarComponent, BadgeComponent],
   template: `
-<div style="display:flex;flex-direction:column;min-height:100vh">
-  <!-- TOPBAR -->
-  <header class="topbar">
-    <div class="topbar-brand">TRIMLY ADMIN</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      @for (n of navItems; track n.id) {
-        <button class="btn btn-sm" [class.btn-amber]="tab() === n.id" [class.btn-ghost]="tab() !== n.id" (click)="tab.set(n.id)">
-          {{ n.icon }} {{ n.label }}
-          @if (n.badge && n.badge > 0) {
-            <span style="background:var(--crimson);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">{{ n.badge }}</span>
+    <div style="display:flex;flex-direction:column;min-height:100vh">
+      <app-topbar></app-topbar>
+
+      <div class="shell" style="flex:1">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="sb-sec">Admin Panel</div>
+          @for (n of nav; track n.tab) {
+            <button class="sb-item" [class.on]="tab() === n.tab" (click)="tab.set(n.tab)">
+              <span class="sb-icon">{{ n.icon }}</span>{{ n.label }}
+              @if (n.tab === 'shops' && pendingShops() > 0) {
+                <span class="sb-badge">{{ pendingShops() }}</span>
+              }
+            </button>
           }
-        </button>
-      }
-    </div>
-    <div class="topbar-right">
-      <div class="user-pill"><div class="up-av">A</div><div><div class="up-name">Admin</div><div class="up-role">Platform</div></div></div>
-      <button class="btn btn-ghost btn-sm" (click)="logout()">Logout</button>
-    </div>
-  </header>
+          <div class="sb-footer">
+            <button class="sb-item" (click)="auth.logout()">🚪 Logout</button>
+          </div>
+        </aside>
 
-  <div class="main-content">
-    @if (loading()) {
-      <div class="loading-overlay"><div class="spinner"></div><span>Loading platform data...</span></div>
-    } @else {
-      @switch (tab()) {
-        @case ('overview') { <ng-container *ngTemplateOutlet="overviewTpl"></ng-container> }
-        @case ('shops') { <ng-container *ngTemplateOutlet="shopsTpl"></ng-container> }
-        @case ('bookings') { <ng-container *ngTemplateOutlet="bookingsTpl"></ng-container> }
-        @case ('revenue') { <ng-container *ngTemplateOutlet="revenueTpl"></ng-container> }
-      }
-    }
-  </div>
-</div>
-
-<!-- OVERVIEW -->
-<ng-template #overviewTpl>
-  <div class="page">
-    <div class="ph">
-      <div class="ph-bc">Admin · <span class="ph-bc-cur">Overview</span></div>
-      <div class="ph-title">PLATFORM OVERVIEW</div>
-      <div class="ph-sub">Real-time platform performance</div>
-    </div>
-    @if (stats()) {
-      <div class="sg">
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--amber),transparent)"></div><div class="sc-icon">🏪</div><div class="sc-val" style="color:var(--amber)">{{ stats()!.totalShops }}</div><div class="sc-label">Total Shops</div><div class="sc-chip chip-y">{{ stats()!.activeShops }} active</div></div>
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--amber),transparent)"></div><div class="sc-icon">⏳</div><div class="sc-val" style="color:var(--amber)">{{ stats()!.pendingShops }}</div><div class="sc-label">Pending Approval</div><div class="sc-chip chip-r">Needs review</div></div>
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--emerald),transparent)"></div><div class="sc-icon">📋</div><div class="sc-val" style="color:var(--emerald)">{{ stats()!.totalBookings }}</div><div class="sc-label">Total Bookings</div><div class="sc-chip chip-g">{{ stats()!.completedBookings }} completed</div></div>
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--sky),transparent)"></div><div class="sc-icon">👤</div><div class="sc-val" style="color:var(--sky)">{{ stats()!.totalCustomers }}</div><div class="sc-label">Customers</div><div class="sc-chip chip-b">Registered</div></div>
+        <main class="main">
+          @if (tab() === 'overview')  { <ng-container *ngTemplateOutlet="overviewTpl"></ng-container> }
+          @if (tab() === 'shops')     { <ng-container *ngTemplateOutlet="shopsTpl"></ng-container> }
+          @if (tab() === 'bookings')  { <ng-container *ngTemplateOutlet="bookingsTpl"></ng-container> }
+          @if (tab() === 'revenue')   { <ng-container *ngTemplateOutlet="revenueTpl"></ng-container> }
+        </main>
       </div>
-      <div class="g2" style="margin-top:20px">
-        <div class="card">
-          <div class="ch"><div class="ct">Platform Revenue</div></div>
-          <div style="font-family:'Unbounded',sans-serif;font-size:36px;font-weight:900;color:var(--amber)">₹{{ stats()!.platformRevenue.toLocaleString('en-IN') }}</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:4px">10% commission from ₹{{ stats()!.totalRevenue.toLocaleString('en-IN') }} gross</div>
-        </div>
-        <div class="card">
-          <div class="ch"><div class="ct">Pending Shops</div><button class="btn btn-sm btn-amber" (click)="tab.set('shops')">Review All →</button></div>
-          @for (shop of stats()!.recentShops.slice(0,3); track shop.id) {
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
-              <div style="font-size:24px">{{ shop.emoji || '✂️' }}</div>
-              <div style="flex:1">
-                <div style="font-weight:700;font-size:13px">{{ shop.shopName }}</div>
-                <div style="font-size:11px;color:var(--text3)">{{ shop.location }} · {{ shop.ownerName }}</div>
-              </div>
-              <button class="btn btn-emerald btn-sm" (click)="approveShop(shop.id)">Approve</button>
-            </div>
-          }
-          @if (stats()!.recentShops.length === 0) {
-            <div class="empty"><div class="ei">✅</div><div class="et">No pending shops</div></div>
-          }
-        </div>
-      </div>
-    }
-  </div>
-</ng-template>
 
-<!-- SHOPS -->
-<ng-template #shopsTpl>
-  <div class="page">
-    <div class="ph"><div class="ph-bc">Admin · <span class="ph-bc-cur">All Shops</span></div><div class="ph-title">ALL SHOPS</div><div class="ph-sub">Manage all barber shops on the platform</div></div>
-    <div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
-      @for (f of ['all','ACTIVE','PENDING','DISABLED']; track f) {
-        <button class="btn btn-sm" [class.btn-amber]="shopFilter() === f" [class.btn-outline]="shopFilter() !== f" (click)="shopFilter.set(f)">{{ f === 'all' ? 'All' : f }}</button>
-      }
-    </div>
-    <div class="tw"><table class="tb">
-      <thead><tr><th>Shop</th><th>Owner</th><th>Location</th><th>Plan</th><th>Status</th><th>Rating</th><th>Bookings</th><th>Actions</th></tr></thead>
-      <tbody>
-        @for (shop of filteredShops(); track shop.id) {
-          <tr>
-            <td><div class="tn">{{ shop.emoji || '✂️' }} {{ shop.shopName }}</div></td>
-            <td style="color:var(--text2);font-size:12px">{{ shop.ownerName }}</td>
-            <td style="color:var(--text3);font-size:12px">{{ shop.location }}</td>
-            <td><span class="badge" [class.by]="shop.plan==='pro'" [class.bm]="shop.plan!=='pro'">{{ shop.plan }}</span></td>
-            <td><span class="badge" [class.bg]="shop.status==='ACTIVE'" [class.by]="shop.status==='PENDING'" [class.br]="shop.status==='DISABLED'">{{ shop.status }}</span></td>
-            <td style="color:var(--amber)">{{ shop.rating ? (shop.rating | number:'1.1-1') + '★' : '—' }}</td>
-            <td style="color:var(--text2)">{{ shop.totalBookings }}</td>
-            <td>
-              <div style="display:flex;gap:6px">
-                @if (shop.status === 'PENDING') { <button class="btn btn-emerald btn-sm" (click)="approveShop(shop.id)">Approve</button> }
-                @if (shop.status === 'ACTIVE') { <button class="btn btn-crimson btn-sm" (click)="disableShop(shop.id)">Disable</button> }
-                @if (shop.status === 'DISABLED') { <button class="btn btn-sky btn-sm" (click)="enableShop(shop.id)">Enable</button> }
-              </div>
-            </td>
-          </tr>
+      <!-- Mobile nav -->
+      <nav class="mobile-nav">
+        @for (n of nav; track n.tab) {
+          <button class="mni" [class.on]="tab() === n.tab" (click)="tab.set(n.tab)">
+            @if (n.tab === 'shops' && pendingShops() > 0) { <span class="mni-badge">{{ pendingShops() }}</span> }
+            <span class="mni-icon">{{ n.icon }}</span>{{ n.label }}
+          </button>
         }
-      </tbody>
-    </table></div>
-  </div>
-</ng-template>
-
-<!-- BOOKINGS -->
-<ng-template #bookingsTpl>
-  <div class="page">
-    <div class="ph"><div class="ph-bc">Admin · <span class="ph-bc-cur">Bookings</span></div>
-      <div class="ph-row">
-        <div><div class="ph-title">ALL BOOKINGS</div><div class="ph-sub">Every transaction across the platform</div></div>
-        <div style="text-align:right"><div style="font-family:'Unbounded',sans-serif;font-size:32px;font-weight:900;color:var(--amber)">₹{{ filteredCommission() | number:'1.0-0' }}</div><div style="font-size:12px;color:var(--text2)">Commission ({{ bookingFilter() }})</div></div>
-      </div>
+      </nav>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
-      @for (f of [['all','All'],['PENDING','Pending'],['CONFIRMED','Confirmed'],['COMPLETED','Completed'],['CANCELLED','Cancelled'],['REJECTED','Rejected']]; track f[0]) {
-        <button class="btn btn-sm" [class.btn-amber]="bookingFilter() === f[0]" [class.btn-outline]="bookingFilter() !== f[0]" (click)="bookingFilter.set(f[0])">{{ f[1] }}</button>
-      }
-    </div>
-    <div class="tw"><table class="tb">
-      <thead><tr><th>Customer</th><th>Shop</th><th>Services</th><th>Date · Slot</th><th>Duration</th><th>Amount</th><th>Commission</th><th>Status</th></tr></thead>
-      <tbody>
-        @for (b of filteredBookings(); track b.id) {
-          <tr>
-            <td><div class="tn">{{ b.customerName }}</div><div class="ts">{{ b.customerPhone }}</div></td>
-            <td style="color:var(--text2);font-size:12px">{{ b.shopName }}</td>
-            <td style="color:var(--text2);font-size:12px;max-width:160px">{{ b.servicesLabel }}</td>
-            <td style="color:var(--text2);font-size:12px">{{ b.bookingDate }} · {{ b.slot }}</td>
-            <td style="color:var(--text2)">{{ b.duration }}m</td>
-            <td><span class="ta">₹{{ b.amount }}</span></td>
-            <td style="font-family:'Unbounded',sans-serif;font-size:16px;color:var(--amber)">₹{{ (b.amount * 0.1) | number:'1.0-0' }}</td>
-            <td><span class="badge" [class]="statusClass(b.status)">{{ b.status }}</span></td>
-          </tr>
-        }
-      </tbody>
-    </table></div>
-  </div>
-</ng-template>
 
-<!-- REVENUE -->
-<ng-template #revenueTpl>
-  <div class="page">
-    <div class="ph"><div class="ph-bc">Admin · <span class="ph-bc-cur">Revenue</span></div><div class="ph-title">REVENUE</div></div>
-    @if (stats()) {
-      <div class="sg">
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--amber),transparent)"></div><div class="sc-icon">💳</div><div class="sc-val" style="color:var(--amber)">₹{{ stats()!.platformRevenue.toLocaleString('en-IN') }}</div><div class="sc-label">Booking Commission</div><div class="sc-chip chip-y">10% per booking</div></div>
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--emerald),transparent)"></div><div class="sc-icon">🏆</div><div class="sc-val" style="color:var(--emerald)">₹{{ stats()!.totalRevenue.toLocaleString('en-IN') }}</div><div class="sc-label">Gross Revenue</div><div class="sc-chip chip-g">All bookings</div></div>
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--sky),transparent)"></div><div class="sc-icon">📈</div><div class="sc-val" style="color:var(--sky)">{{ stats()!.activeShops }}</div><div class="sc-label">Paying Shops</div><div class="sc-chip chip-b">Active</div></div>
-        <div class="sc"><div class="sc-accent" style="background:linear-gradient(90deg,var(--violet),transparent)"></div><div class="sc-icon">📋</div><div class="sc-val" style="color:var(--violet)">{{ stats()!.completedBookings }}</div><div class="sc-label">Completed Bookings</div><div class="sc-chip chip-b">Revenue earned</div></div>
-      </div>
-      <div class="card" style="margin-top:20px">
-        <div class="ch"><div class="ct">Per-Shop Breakdown</div></div>
-        @for (s of shops(); track s.id) {
-          <div style="padding:16px 0;border-bottom:1px solid var(--border)">
-            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-              <div style="font-weight:600">{{ s.emoji || '✂️' }} {{ s.shopName }} <span class="badge" [class.by]="s.plan==='pro'" [class.bm]="s.plan!=='pro'">{{ s.plan }}</span></div>
-              <div style="text-align:right">
-                <span style="font-family:'Unbounded',sans-serif;font-size:20px;color:var(--amber)">₹{{ (s.monthlyRev * s.commissionPct / 100) | number:'1.0-0' }}</span>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px">from ₹{{ s.monthlyRev | number:'1.0-0' }}</span>
+    <!-- ══ TEMPLATES ══ -->
+
+    <!-- Overview -->
+    <ng-template #overviewTpl>
+      <div class="page anim-fade-up">
+        <div class="ph">
+          <div class="ph-title">Platform Overview 👑</div>
+          <div class="ph-sub">{{ todayDate }} · Admin Dashboard</div>
+        </div>
+
+        <div class="sg">
+          <div class="sc"><div class="sc-icon">🏪</div><div class="sc-val">{{ stats()?.totalShops || 0 }}</div><div class="sc-label">Total Shops</div><div class="sc-chip chip-g">{{ stats()?.activeShops || 0 }} active</div></div>
+          <div class="sc"><div class="sc-icon">⏳</div><div class="sc-val">{{ stats()?.pendingShops || 0 }}</div><div class="sc-label">Pending Approval</div>@if ((stats()?.pendingShops || 0) > 0){<div class="sc-chip chip-y">Needs action</div>}</div>
+          <div class="sc"><div class="sc-icon">👤</div><div class="sc-val">{{ stats()?.totalCustomers || 0 }}</div><div class="sc-label">Customers</div></div>
+          <div class="sc"><div class="sc-icon">📅</div><div class="sc-val">{{ stats()?.totalBookings || 0 }}</div><div class="sc-label">Total Bookings</div></div>
+        </div>
+
+        <div class="g2">
+          <div class="sc"><div class="sc-icon">💰</div><div class="sc-val">₹{{ stats()?.totalRevenue | number:'1.0-0' }}</div><div class="sc-label">Gross Revenue</div><div class="sc-chip chip-g">Platform total</div></div>
+          <div class="sc"><div class="sc-icon">🏢</div><div class="sc-val">₹{{ stats()?.totalCommission | number:'1.0-0' }}</div><div class="sc-label">Platform Commission</div><div class="sc-chip chip-b">10% of completed</div></div>
+        </div>
+
+        @if (pendingShops() > 0) {
+          <div class="card" style="margin-top:14px">
+            <div class="ch">
+              <div class="ct">⏳ Shops Awaiting Approval</div>
+              <button class="btn btn-ghost-amber btn-sm" (click)="tab.set('shops')">View all →</button>
+            </div>
+            @for (s of pendingShopsPreview(); track s.id) {
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="font-size:28px">{{ s.emoji || '✂️' }}</div>
+                  <div>
+                    <div style="font-weight:700">{{ s.shopName }}</div>
+                    <div style="font-size:11px;color:var(--text3)">{{ s.ownerName }} · {{ s.city }}</div>
+                  </div>
+                </div>
+                <button class="btn btn-emerald btn-sm" (click)="approve(s.id)">✓ Approve</button>
               </div>
-            </div>
-            <div style="height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,0.05)">
-              <div [style.width]="(s.monthlyRev > 0 ? s.commissionPct : 0) + '%'" style="height:100%;background:var(--amber);border-radius:3px"></div>
-            </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:5px">{{ s.commissionPct }}% commission + ₹{{ s.subscriptionFee }}/mo subscription</div>
+            }
           </div>
         }
       </div>
-    }
-  </div>
-</ng-template>
+    </ng-template>
+
+    <!-- Shops -->
+    <ng-template #shopsTpl>
+      <div class="page anim-fade-up">
+        <div class="ph">
+          <div class="ph-row">
+            <div><div class="ph-title">All Shops</div><div class="ph-sub">{{ shops().length }} shops on platform</div></div>
+          </div>
+        </div>
+
+        <!-- Status filter -->
+        <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+          @for (f of shopFilters; track f.val) {
+            <button class="area-pill" [class.on]="shopFilter() === f.val" (click)="shopFilter.set(f.val)">{{ f.label }}</button>
+          }
+        </div>
+
+        <div class="tw">
+          <table class="tb">
+            <thead>
+              <tr>
+                <th>Shop</th><th>Owner</th><th>City</th><th>Plan</th><th>Status</th><th>Bookings</th><th>Revenue</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (s of filteredShops(); track s.id) {
+                <tr>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:20px">{{ s.emoji || '✂️' }}</span>
+                      <div>
+                        <div class="tn">{{ s.shopName }}</div>
+                        <div class="ts">{{ s.area }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><div class="tn">{{ s.ownerName }}</div><div class="ts">{{ s.ownerEmail }}</div></td>
+                  <td>{{ s.city }}</td>
+                  <td><span class="badge" [class]="s.plan === 'PRO' ? 'bv' : 'bm'">{{ s.plan }}</span></td>
+                  <td><app-badge [status]="s.status"></app-badge></td>
+                  <td>{{ s.totalBookings || 0 }}</td>
+                  <td class="ta">₹{{ s.monthlyRevenue | number:'1.0-0' }}</td>
+                  <td>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap">
+                      @if (s.status === 'PENDING') {
+                        <button class="btn btn-emerald btn-sm" (click)="approve(s.id)">✓ Approve</button>
+                      }
+                      @if (s.status === 'ACTIVE') {
+                        <button class="btn btn-crimson btn-sm" (click)="disable(s.id)">Disable</button>
+                      }
+                      @if (s.status === 'DISABLED') {
+                        <button class="btn btn-emerald btn-sm" (click)="enable(s.id)">Enable</button>
+                      }
+                      <button class="btn btn-ghost btn-sm" (click)="openCommission(s)">% Fee</button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Commission modal -->
+      @if (commissionShop()) {
+        <div class="mo" (click)="commissionShop.set(null)">
+          <div class="mb" style="max-width:360px" (click)="$event.stopPropagation()">
+            <div class="mh"><div class="mt">Set Commission</div><button class="mx" (click)="commissionShop.set(null)">×</button></div>
+            <div class="mbody">
+              <div style="font-weight:600;margin-bottom:12px">{{ commissionShop()!.shopName }}</div>
+              <div class="fg">
+                <label class="fl">Commission % (current: {{ commissionShop()!.commissionPercent }}%)</label>
+                <input class="fi" type="number" min="0" max="30" [(ngModel)]="newCommission">
+              </div>
+            </div>
+            <div class="mfoot">
+              <button class="btn btn-outline btn-sm" (click)="commissionShop.set(null)">Cancel</button>
+              <button class="btn btn-amber btn-sm" (click)="saveCommission()">Save</button>
+            </div>
+          </div>
+        </div>
+      }
+    </ng-template>
+
+    <!-- Bookings -->
+    <ng-template #bookingsTpl>
+      <div class="page anim-fade-up">
+        <div class="ph">
+          <div class="ph-row"><div><div class="ph-title">All Bookings</div><div class="ph-sub">{{ bookings().length }} total</div></div></div>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+          @for (f of bkFilters; track f.val) {
+            <button class="area-pill" [class.on]="bkFilter() === f.val" (click)="bkFilter.set(f.val)">{{ f.label }}</button>
+          }
+        </div>
+
+        <div class="tw">
+          <table class="tb">
+            <thead><tr><th>Customer</th><th>Shop</th><th>Services</th><th>Date & Time</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>
+              @for (b of filteredBookings(); track b.id) {
+                <tr>
+                  <td><div class="tn">{{ b.customerName }}</div><div class="ts">{{ b.customerPhone }}</div></td>
+                  <td>{{ b.shopName }}</td>
+                  <td>{{ b.servicesSnapshot }}</td>
+                  <td><div>{{ b.bookingDate }}</div><div class="ts">{{ b.slotTime }}</div></td>
+                  <td class="ta">₹{{ b.totalAmount }}</td>
+                  <td><app-badge [status]="b.status"></app-badge></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </ng-template>
+
+    <!-- Revenue -->
+    <ng-template #revenueTpl>
+      <div class="page anim-fade-up">
+        <div class="ph"><div class="ph-title">Revenue Analytics 📊</div></div>
+        <div class="sg">
+          <div class="sc"><div class="sc-icon">💰</div><div class="sc-val">₹{{ stats()?.totalRevenue | number:'1.0-0' }}</div><div class="sc-label">Gross Revenue</div><div class="sc-chip chip-g">All time</div></div>
+          <div class="sc"><div class="sc-icon">🏢</div><div class="sc-val">₹{{ stats()?.totalCommission | number:'1.0-0' }}</div><div class="sc-label">Platform Earnings</div><div class="sc-chip chip-b">10% commission</div></div>
+          <div class="sc"><div class="sc-icon">✂️</div><div class="sc-val">₹{{ stats()?.barberEarnings | number:'1.0-0' }}</div><div class="sc-label">Barber Payouts</div></div>
+          <div class="sc"><div class="sc-icon">🏁</div><div class="sc-val">{{ stats()?.completedBookings || 0 }}</div><div class="sc-label">Completed Bookings</div></div>
+        </div>
+
+        <!-- Revenue by shop -->
+        <div class="card">
+          <div class="ch"><div class="ct">Revenue by Shop</div></div>
+          @for (s of shopsWithRevenue(); track s.id) {
+            <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <div>
+                  <span style="font-size:16px">{{ s.emoji || '✂️' }}</span>
+                  <b style="margin-left:6px">{{ s.shopName }}</b>
+                  <span style="color:var(--text3);font-size:11px;margin-left:6px">{{ s.city }}</span>
+                </div>
+                <div style="font-family:'Unbounded',sans-serif;font-size:16px;font-weight:700;color:var(--amber)">₹{{ s.monthlyRevenue | number:'1.0-0' }}</div>
+              </div>
+              <div class="pct-bar">
+                <div class="pct-fill" [style.width]="revenueWidth(s.monthlyRevenue || 0)" style="background:var(--amber)"></div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </ng-template>
   `
 })
 export class AdminComponent implements OnInit {
-  private api = inject(ApiService);
-  private authSvc = inject(AuthService);
-  private toast = inject(ToastService);
+  auth = inject(AuthService);
+  shopSvc = inject(ShopService);
+  bookSvc = inject(BookingService);
+  toast = inject(ToastService);
 
-  tab = signal<AdminTab>('overview');
-  loading = signal(true);
-  stats = signal<AdminStats | null>(null);
-  shops = signal<Shop[]>([]);
-  bookings = signal<Booking[]>([]);
-  shopFilter = signal('all');
-  bookingFilter = signal('all');
+  tab = signal<Tab>('overview');
+  shops = signal<ShopResponse[]>([]);
+  bookings = signal<BookingResponse[]>([]);
+  stats = signal<DashboardStats | null>(null);
+  shopFilter = signal('');
+  bkFilter = signal('');
+  commissionShop = signal<ShopResponse | null>(null);
+  newCommission = 10;
 
-  get navItems() {
-    return [
-      { id: 'overview' as AdminTab, icon: '📊', label: 'Overview', badge: 0 },
-      { id: 'shops' as AdminTab, icon: '🏪', label: 'All Shops', badge: this.stats()?.pendingShops ?? 0 },
-      { id: 'bookings' as AdminTab, icon: '📋', label: 'Bookings', badge: 0 },
-      { id: 'revenue' as AdminTab, icon: '💰', label: 'Revenue', badge: 0 }
-    ];
+  nav = [
+    { tab: 'overview'  as Tab, icon: '📊', label: 'Overview' },
+    { tab: 'shops'     as Tab, icon: '🏪', label: 'Shops' },
+    { tab: 'bookings'  as Tab, icon: '📅', label: 'Bookings' },
+    { tab: 'revenue'   as Tab, icon: '💰', label: 'Revenue' },
+  ];
+
+  shopFilters = [
+    { val: '', label: 'All' },
+    { val: 'ACTIVE', label: '🟢 Active' },
+    { val: 'PENDING', label: '⏳ Pending' },
+    { val: 'DISABLED', label: '⛔ Disabled' },
+  ];
+
+  bkFilters = [
+    { val: '', label: 'All' },
+    { val: 'pending', label: '⏳ Pending' },
+    { val: 'confirmed', label: '✓ Confirmed' },
+    { val: 'completed', label: '🏁 Completed' },
+    { val: 'cancelled', label: 'Cancelled' },
+  ];
+
+  get todayDate() { return new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' }); }
+  pendingShops() { return this.shops().filter(s => s.status === 'PENDING').length; }
+  pendingShopsPreview() { return this.shops().filter(s => s.status === 'PENDING').slice(0, 3); }
+  filteredShops() { return this.shopFilter() ? this.shops().filter(s => s.status === this.shopFilter()) : this.shops(); }
+  filteredBookings() { return this.bkFilter() ? this.bookings().filter(b => b.status === this.bkFilter()) : this.bookings(); }
+  shopsWithRevenue() { return this.shops().filter(s => (s.monthlyRevenue || 0) > 0).sort((a, b) => (b.monthlyRevenue || 0) - (a.monthlyRevenue || 0)); }
+  maxRevenue() { return Math.max(...this.shops().map(s => s.monthlyRevenue || 0), 1); }
+  revenueWidth(v: number) { return Math.round((v / this.maxRevenue()) * 100) + '%'; }
+
+  ngOnInit() {
+    this.shopSvc.adminGetAllShops().subscribe({ next: r => this.shops.set(r.data || []) });
+    this.bookSvc.adminGetAllBookings().subscribe({ next: r => this.bookings.set(r.data || []) });
+    this.bookSvc.adminGetStats().subscribe({ next: r => this.stats.set(r.data) });
   }
 
-  filteredShops() {
-    const f = this.shopFilter();
-    return f === 'all' ? this.shops() : this.shops().filter(s => s.status === f);
+  approve(id: number) {
+    this.shopSvc.adminApprove(id).subscribe({ next: r => {
+      this.shops.update(s => s.map(x => x.id === id ? r.data : x));
+      this.toast.ok('Shop approved ✅', 'Barber notified via WhatsApp');
+    }});
   }
 
-  filteredBookings() {
-    const f = this.bookingFilter();
-    return f === 'all' ? this.bookings() : this.bookings().filter(b => b.status === f);
+  disable(id: number) {
+    this.shopSvc.adminDisable(id).subscribe({ next: r => {
+      this.shops.update(s => s.map(x => x.id === id ? r.data : x));
+      this.toast.warn('Shop disabled');
+    }});
   }
 
-  filteredCommission() {
-    return this.filteredBookings().reduce((sum, b) => sum + b.amount * 0.1, 0);
+  enable(id: number) {
+    this.shopSvc.adminEnable(id).subscribe({ next: r => {
+      this.shops.update(s => s.map(x => x.id === id ? r.data : x));
+      this.toast.ok('Shop re-enabled ✅');
+    }});
   }
 
-  ngOnInit(): void {
-    this.loadData();
+  openCommission(s: ShopResponse) {
+    this.commissionShop.set(s);
+    this.newCommission = s.commissionPercent || 10;
   }
 
-  loadData(): void {
-    this.loading.set(true);
-    this.api.get<AdminStats>('/admin/stats').subscribe({
-      next: s => { this.stats.set(s); this.loading.set(false); }
-    });
-    this.api.get<Shop[]>('/shops').subscribe({ next: s => this.shops.set(s) });
-    this.api.get<Booking[]>('/bookings').subscribe({ next: b => this.bookings.set(b) });
+  saveCommission() {
+    const s = this.commissionShop();
+    if (!s) return;
+    this.shopSvc.adminSetCommission(s.id, this.newCommission).subscribe({ next: r => {
+      this.shops.update(list => list.map(x => x.id === s.id ? r.data : x));
+      this.commissionShop.set(null);
+      this.toast.ok('Commission updated');
+    }});
   }
-
-  approveShop(id: number): void {
-    this.api.patchWithParams(`/shops/${id}/status`, { status: 'ACTIVE' }).subscribe({
-      next: () => { this.toast.show('Shop Approved ✓', 'Barber can now start accepting bookings.', 'ok'); this.loadData(); },
-      error: () => this.toast.show('Error', 'Failed to approve shop', 'err')
-    });
-  }
-
-  disableShop(id: number): void {
-    this.api.patchWithParams(`/shops/${id}/status`, { status: 'DISABLED' }).subscribe({
-      next: () => { this.toast.show('Shop Disabled', 'Barber cannot login until re-enabled.', 'warn'); this.loadData(); },
-      error: () => this.toast.show('Error', 'Failed to disable shop', 'err')
-    });
-  }
-
-  enableShop(id: number): void {
-    this.api.patchWithParams(`/shops/${id}/status`, { status: 'ACTIVE' }).subscribe({
-      next: () => { this.toast.show('Shop Re-enabled', 'Barber can now login again.', 'ok'); this.loadData(); },
-      error: () => this.toast.show('Error', 'Failed to enable shop', 'err')
-    });
-  }
-
-  statusClass(s: string): string {
-    return s === 'ACTIVE' ? 'bg' : s === 'PENDING' ? 'by' : s === 'CONFIRMED' ? 'bb' : s === 'COMPLETED' ? 'bm' : 'br';
-  }
-
-  logout(): void { this.authSvc.logout(); }
 }
